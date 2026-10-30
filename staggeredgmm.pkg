@@ -1,0 +1,43 @@
+v 3
+d staggeredgmm: GMM estimation of treatment effects under staggered adoption
+d
+d Estimates cohort-by-time average treatment effects under staggered
+d treatment adoption by the generalized method of moments. Every clean 2x2
+d difference-in-differences comparison (against never-treated and
+d not-yet-treated units) enters an over-identified moment system that is
+d combined by iterated optimal GMM, with the weight built from a model of the
+d serial correlation of the errors. Three weighting schemes are provided:
+d a pooled stationary covariance, a cohort-specific stationary covariance and
+d an unrestricted within-cohort covariance. Optional adjustment for baseline
+d covariates by outcome regression, and a serial-correlation robust
+d over-identification test of parallel trends and no anticipation (estat jtest),
+d are also supported. Unbalanced panels are supported.
+d
+d Stata implementation of the R package staggeredGMM 0.1.0 (CRAN).
+d Method: Arora and Bijani (2026), doi:10.2139/ssrn.6558759.
+d
+d KW: difference-in-differences
+d KW: staggered adoption
+d KW: event study
+d KW: GMM
+d KW: treatment effects
+d KW: parallel trends
+d
+d Requires: Stata version 16
+d
+d Distribution-Date: 20261030
+d Homepage: https://github.com/RishabhBijani/staggeredGMM_STATA
+d License: MIT
+d
+d Authors: Rishabh Bijani, Ashoka University (maintainer)
+d Support: email rishabhbijani@gmail.com
+d Parush Arora, Ashoka University
+d Support: email parush.arora@ashoka.edu.in
+d
+f staggeredgmm.ado
+f staggeredgmm_estat.ado
+f staggeredgmm.sthlp
+f staggeredgmm_postestimation.sthlp
+F sgmm_sim_panel.dta
+F sgmm_beck_banks.dta
+F sgmm_beck_banks_LICENSE.txt

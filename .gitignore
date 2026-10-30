@@ -1,0 +1,9 @@
+# macOS
+.DS_Store
+
+# Parity study: kept local, not published
+parity/
+
+# Stata logs
+*.log
+*.smcl

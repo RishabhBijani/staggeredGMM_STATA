@@ -1,0 +1,4 @@
+v 3
+d staggeredgmm: GMM estimation of treatment effects under staggered adoption
+d Rishabh Bijani and Parush Arora
+p staggeredgmm GMM estimation of treatment effects under staggered adoption
