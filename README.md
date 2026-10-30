@@ -1,6 +1,6 @@
 # staggeredgmm (Stata)
 
-GMM estimation of treatment effects under staggered adoption.
+Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption.
 
 `staggeredgmm` estimates cohort-by-time average treatment effects (CATTs) under
 staggered treatment adoption by the generalized method of moments, following
@@ -9,8 +9,7 @@ difference-in-differences comparison available for it, against never-treated
 units and against cohorts that are not yet treated. The clean comparisons are
 stacked into an over-identified moment system. They are combined by iterated
 optimal GMM, with the weight built from a model of the serial correlation of
-the errors. Comparisons against already-treated cohorts are exact linear
-combinations of the clean ones, so they are never formed.
+the errors.
 
 This is the Stata implementation of the R package
 [staggeredGMM](https://CRAN.R-project.org/package=staggeredGMM), version 0.1.0.
@@ -25,7 +24,6 @@ This is the Stata implementation of the R package
 - [Examples](#examples)
 - [Data requirements](#data-requirements)
 - [Unbalanced panels, partial identification and convergence](#unbalanced-panels-partial-identification-and-convergence)
-- [Differences from the R package](#differences-from-the-r-package)
 - [Files](#files)
 - [Citation](#citation)
 - [Authors and licence](#authors-and-licence)
@@ -258,24 +256,6 @@ When `e(solve_ok)` is 0, the reported estimates are the identity-weighted seed
 They are not a GMM estimate under the requested weighting, and a warning is
 always issued.
 
-## Differences from the R package
-
-`staggeredgmm` reproduces `staggeredGMM` 0.1.0. It departs from it only where
-Stata requires:
-
-- Coefficient names cannot contain a minus sign, so negative periods or cohorts
-  are written with `m`: cohort 3 at period -2 is `_b[g3:tm2]`.
-- If a covariate has no observed value among the units of a treated cohort, R
-  returns `NA` for the affected effects. `staggeredgmm` stops with an error.
-- A factor covariate with fewer than two levels in the estimation sample is an
-  error, as in R. An empty string in a string `ivar()` is treated as missing.
-- Normal equations are declared singular when their exact 1-norm reciprocal
-  condition number is below machine epsilon. R uses LAPACK's estimate, which can
-  only be larger. In a borderline case `staggeredgmm` may therefore report
-  `singular_normal_equations` where R does not; never the reverse.
-- `e(V)` and the internal weight `e(sgmm_W)` are subject to Stata's matrix size
-  limit (see `help limits`).
-
 ## Files
 
 | File | Purpose |
@@ -297,8 +277,8 @@ Please cite the paper and the software:
 > Staggered Timing and Non-Spherical Errors." Available at SSRN.
 > [doi:10.2139/ssrn.6558759](https://doi.org/10.2139/ssrn.6558759)
 
-> Bijani, R. and Arora, P. (2026). staggeredgmm: GMM estimation of treatment
-> effects under staggered adoption. Stata package version 0.1.0.
+> Arora, P. and Bijani, R. (2026). staggeredgmm: Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption.
+> Stata package version 0.1.0.
 > https://github.com/RishabhBijani/staggeredGMM_STATA
 
 ```bibtex
@@ -311,8 +291,8 @@ Please cite the paper and the software:
 }
 
 @manual{staggeredgmm_stata,
-  title  = {staggeredgmm: GMM Estimation of Treatment Effects under Staggered Adoption},
-  author = {Bijani, Rishabh and Arora, Parush},
+  title  = {staggeredgmm: Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption},
+  author = {Arora, Parush and Bijani, Rishabh},
   year   = {2026},
   note   = {Stata package version 0.1.0},
   url    = {https://github.com/RishabhBijani/staggeredGMM_STATA}
@@ -325,8 +305,8 @@ The R package is at
 
 ## Authors and licence
 
-Rishabh Bijani (maintainer), Ashoka University, rishabhbijani@gmail.com
 Parush Arora, Ashoka University, parush.arora@ashoka.edu.in
+Rishabh Bijani, Ashoka University, rishabhbijani@gmail.com
 
 Released under the MIT licence. `sgmm_beck_banks.dta` is derived from the
 replication data of Beck, Levine and Levkov (2010), DataverseNL

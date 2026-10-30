@@ -1,4 +1,4 @@
 v 3
-d staggeredgmm: GMM estimation of treatment effects under staggered adoption
-d Rishabh Bijani and Parush Arora
-p staggeredgmm GMM estimation of treatment effects under staggered adoption
+d staggeredgmm: Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption
+d Parush Arora and Rishabh Bijani
+p staggeredgmm Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption

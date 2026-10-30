@@ -13,7 +13,7 @@
 {title:Title}
 
 {phang}
-{bf:staggeredgmm} {hline 2} GMM estimation of treatment effects under staggered adoption
+{bf:staggeredgmm}: Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption
 
 
 {marker syntax}{...}
@@ -67,8 +67,7 @@ difference-in-differences comparison available for it: against never-treated
 units and against cohorts that are not yet treated. The clean comparisons are
 stacked into an over-identified moment system and combined by iterated optimal
 GMM, with the weight built from a model of the serial correlation of the
-errors. Comparisons against already-treated cohorts are exact linear
-combinations of the clean ones and are never formed.
+errors.
 
 {pstd}
 Three covariance models are available through {opt weighting()}. They
@@ -85,7 +84,7 @@ equally over its own post-treatment periods.
 {pstd}
 {cmd:staggeredgmm} is the Stata implementation of the R package
 {browse "https://CRAN.R-project.org/package=staggeredGMM":staggeredGMM}
-(version 0.1.0) and reproduces its estimates. It does not require R.
+(version 0.1.0).
 
 
 {marker options}{...}
@@ -215,28 +214,6 @@ period is used, with a warning. Where the regression is not identified (too few
 complete-case control units, or collinear covariates), that comparison reverts
 to the unconditional form, with a warning reporting how many did.
 
-{pstd}
-{bf:Differences from the R package.} {cmd:staggeredgmm} reproduces the
-estimates of {cmd:staggeredGMM} 0.1.0. It departs from it only where Stata
-requires:
-
-{p 8 10 2}- Coefficient names cannot contain a minus sign, so a negative period
-or cohort is written with {cmd:m}: the effect for cohort 3 at period -2 is
-{cmd:_b[g3:tm2]}.{p_end}
-{p 8 10 2}- If a covariate has no observed value among the units of a treated
-cohort, R returns {cmd:NA} for the affected effects; {cmd:staggeredgmm} stops
-with an error instead.{p_end}
-{p 8 10 2}- An empty string in a string {cmd:ivar()} is treated as missing.{p_end}
-{p 8 10 2}- Normal equations are declared singular when their exact 1-norm
-reciprocal condition number is below machine epsilon. R uses LAPACK's
-estimate, which can only be larger, so in a borderline case
-{cmd:staggeredgmm} may report {cmd:singular_normal_equations} (or use a
-generalised inverse for the variance) where R does not; never the
-reverse.{p_end}
-{p 8 10 2}- {cmd:e(V)} has one row per identified effect and {cmd:e(sgmm_W)} one
-row per group-period. Both are subject to Stata's matrix size limit
-({help limits}), which R does not have.{p_end}
-
 
 {marker examples}{...}
 {title:Examples}
@@ -360,13 +337,13 @@ multiple time periods. {it:Journal of Econometrics} 225(2): 200-230.
 {title:Authors}
 
 {pstd}
-Rishabh Bijani (maintainer), Ashoka University, rishabhbijani@gmail.com{break}
-Parush Arora, Ashoka University, parush.arora@ashoka.edu.in
+Parush Arora, Ashoka University, parush.arora@ashoka.edu.in{break}
+Rishabh Bijani, Ashoka University, rishabhbijani@gmail.com
 
 {pstd}
 Please cite the paper above and the software:
-Bijani, R. and P. Arora. 2026. staggeredgmm: GMM estimation of treatment
-effects under staggered adoption. Stata package version 0.1.0.
+Arora, P. and R. Bijani. 2026. staggeredgmm: Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption.
+Stata package version 0.1.0.
 {browse "https://github.com/RishabhBijani/staggeredGMM_STATA"}
 
 {pstd}

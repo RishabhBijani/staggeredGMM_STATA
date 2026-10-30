@@ -1,5 +1,5 @@
 v 3
-d staggeredgmm: GMM estimation of treatment effects under staggered adoption
+d staggeredgmm: Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption
 d
 d Estimates cohort-by-time average treatment effects under staggered
 d treatment adoption by the generalized method of moments. Every clean 2x2
@@ -29,10 +29,10 @@ d Distribution-Date: 20261030
 d Homepage: https://github.com/RishabhBijani/staggeredGMM_STATA
 d License: MIT
 d
-d Authors: Rishabh Bijani, Ashoka University (maintainer)
-d Support: email rishabhbijani@gmail.com
-d Parush Arora, Ashoka University
+d Authors: Parush Arora, Ashoka University
 d Support: email parush.arora@ashoka.edu.in
+d Rishabh Bijani, Ashoka University
+d Support: email rishabhbijani@gmail.com
 d
 f staggeredgmm.ado
 f staggeredgmm_estat.ado

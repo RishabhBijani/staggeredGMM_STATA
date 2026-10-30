@@ -1,5 +1,5 @@
-*! version 0.1.0  30oct2026  Rishabh Bijani, Parush Arora
-*! GMM estimation of treatment effects under staggered adoption
+*! version 0.1.0  30oct2026  Parush Arora, Rishabh Bijani
+*! Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption
 *! Stata translation of the R package staggeredGMM 0.1.0 (CRAN)
 
 program staggeredgmm, eclass
