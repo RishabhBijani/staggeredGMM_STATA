@@ -3,6 +3,7 @@
 {vieweralsosee "staggeredgmm" "help staggeredgmm"}{...}
 {viewerjumpto "Postestimation commands" "staggeredgmm_postestimation##description"}{...}
 {viewerjumpto "estat jtest" "staggeredgmm_postestimation##jtest"}{...}
+{viewerjumpto "estat aggregate" "staggeredgmm_postestimation##aggregate"}{...}
 {viewerjumpto "Examples" "staggeredgmm_postestimation##examples"}{...}
 {viewerjumpto "Stored results" "staggeredgmm_postestimation##results"}{...}
 {title:Title}
@@ -15,12 +16,13 @@
 {title:Postestimation commands}
 
 {pstd}
-The following postestimation command is of special interest after {cmd:staggeredgmm}:
+The following postestimation commands are of special interest after {cmd:staggeredgmm}:
 
 {synoptset 20}{...}
 {p2coldent:Command}Description{p_end}
 {synoptline}
-{synopt:{helpb staggeredgmm_postestimation##jtest:estat jtest}}specification test of parallel trends and no anticipation{p_end}
+{synopt:{helpb staggeredgmm_postestimation##jtest:estat jtest}}specification test of unconditional parallel trends and no anticipation{p_end}
+{synopt:{helpb staggeredgmm_postestimation##aggregate:estat aggregate}}aggregate ATTs, optionally posted to {cmd:e(b)} for {cmd:esttab} or {cmd:outreg2}{p_end}
 {synoptline}
 
 {pstd}
@@ -90,6 +92,52 @@ units is comfortably large.
 {pstd}
 The test requires a never-treated control group.
 
+{pstd}
+{bf:Important: the test is unconditional.} The placebo moments are unadjusted
+group means, whether or not the fitted model adjusts for covariates. After a
+covariate-adjusted fit, {cmd:estat jtest} therefore tests {bf:unconditional}
+parallel trends and no anticipation; it does {bf:not} test the
+covariate-conditional parallel trends assumption under which the effects were
+estimated. If covariates are distributed differently across cohorts, the test
+can reject although conditional parallel trends hold, and a non-rejection does
+not validate the conditional assumption. When the model includes covariates,
+{cmd:estat jtest} prints this warning below the result, and {cmd:r(scope)} is
+{cmd:unconditional}.
+
+
+{marker aggregate}{...}
+{title:Syntax for estat aggregate}
+
+{p 8 17 2}
+{cmd:estat} {cmdab:agg:regate} [{cmd:,} {opt post} {opt l:evel(#)}]
+
+{synoptset 20}{...}
+{synopthdr}
+{synoptline}
+{synopt:{opt post}}replace {cmd:e(b)} and {cmd:e(V)} with the aggregate ATTs and their covariance{p_end}
+{synopt:{opt l:evel(#)}}set confidence level; default is {cmd:level(95)}{p_end}
+{synoptline}
+
+
+{title:Description of estat aggregate}
+
+{pstd}
+{cmd:estat aggregate} reports the two aggregate ATTs, {cmd:att_cw} (the
+treated-observation ATT) and {cmd:att_ew} (the cohort-equal ATT), as a
+coefficient table with their joint covariance, which is computed exactly from
+the covariance of the cohort-by-time effects. When some cohort-by-time effects
+are not identified, both aggregates are taken over the identified effects only,
+with the weights renormalised to sum to one, and the output reports the share
+of the original weight they cover.
+
+{pstd}
+With {opt post}, {cmd:e(b)} and {cmd:e(V)} are replaced by the two aggregates
+and their covariance, so that {cmd:esttab}, {cmd:outreg2}, {cmd:lincom},
+{cmd:test} and {cmd:estimates store} treat them like any other coefficients.
+All other results of {cmd:staggeredgmm} are kept, {cmd:e(subcmd)} is set to
+{cmd:aggregate}, and {cmd:estat jtest} still works. To return to the
+cohort-by-time effects, rerun {cmd:staggeredgmm} or restore stored estimates.
+
 
 {marker examples}{...}
 {title:Examples}
@@ -100,6 +148,14 @@ The test requires a never-treated control group.
 {phang2}{cmd:. estat jtest, window(5)}{p_end}
 {phang2}{cmd:. estat jtest, full}{p_end}
 {phang2}{cmd:. matrix list r(moments)}{p_end}
+
+{pstd}Exporting the aggregate ATTs and the cohort-by-time effects{p_end}
+{phang2}{cmd:. staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)}{p_end}
+{phang2}{cmd:. estimates store catt}{p_end}
+{phang2}{cmd:. estat aggregate, post}{p_end}
+{phang2}{cmd:. estimates store att}{p_end}
+{phang2}{cmd:. esttab att, se}{p_end}
+{phang2}{cmd:. esttab catt, se}{p_end}
 
 
 {marker results}{...}
@@ -120,10 +176,27 @@ The test requires a never-treated control group.
 
 {p2col 5 20 24 2: Macros}{p_end}
 {synopt:{cmd:r(type)}}{cmd:local} or {cmd:full}{p_end}
+{synopt:{cmd:r(scope)}}{cmd:unconditional}: the placebo moments are never covariate-adjusted{p_end}
 {synopt:{cmd:r(weighting)}}weighting scheme of the fitted model{p_end}
 
 {p2col 5 20 24 2: Matrices}{p_end}
 {synopt:{cmd:r(moments)}}placebo moments: {cmd:g}, {cmd:t}, {cmd:event_time}, {cmd:moment}{p_end}
+
+{pstd}
+{cmd:estat aggregate} stores the following in {cmd:r()}:
+
+{synoptset 20 tabbed}{...}
+{p2col 5 20 24 2: Scalars}{p_end}
+{synopt:{cmd:r(share_cw)}}share of treated-observation weight on identified effects{p_end}
+{synopt:{cmd:r(share_ew)}}share of cohort-equal weight on identified effects{p_end}
+
+{p2col 5 20 24 2: Matrices}{p_end}
+{synopt:{cmd:r(b)}}aggregate ATTs, {cmd:att_cw} and {cmd:att_ew}{p_end}
+{synopt:{cmd:r(V)}}their covariance matrix{p_end}
+
+{pstd}
+With {opt post}, {cmd:e(b)} and {cmd:e(V)} hold the same two aggregates and
+{cmd:e(subcmd)} is {cmd:aggregate}.
 
 
 {title:Reference}

@@ -11,15 +11,13 @@ stacked into an over-identified moment system. They are combined by iterated
 optimal GMM, with the weight built from a model of the serial correlation of
 the errors.
 
-This is the Stata implementation of the R package
-[staggeredGMM](https://CRAN.R-project.org/package=staggeredGMM), version 0.1.0.
-
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Syntax](#syntax)
 - [Options](#options)
 - [What is estimated](#what-is-estimated)
 - [Specification test: estat jtest](#specification-test-estat-jtest)
+- [Exporting results: esttab and outreg2](#exporting-results-esttab-and-outreg2)
 - [Stored results](#stored-results)
 - [Examples](#examples)
 - [Data requirements](#data-requirements)
@@ -42,8 +40,8 @@ Once the package is on SSC:
 ssc install staggeredgmm
 ```
 
-Requires Stata 16 or later. Installation also places two example datasets,
-`sgmm_sim_panel` and `sgmm_beck_banks`, where `sysuse` can find them.
+Requires Stata 16 or later. Installation also places the example dataset
+`sgmm_sim_panel` where `sysuse` can find it.
 
 ## Quick start
 
@@ -59,6 +57,8 @@ estat jtest
 staggeredgmm depvar [covariates] [if] [in], ivar(varname) time(varname) gvar(varname) [options]
 
 estat jtest [, full window(#)]
+
+estat aggregate [, post level(#)]
 ```
 
 `covariates` are baseline (pre-treatment, time-invariant) covariates. They may
@@ -122,10 +122,21 @@ comparison reverts to the unconditional form, with a warning reporting how many
 did (`e(cov_n_fallback)`). Where a covariate varies within a unit, its value in
 the unit's earliest observed period is used, with a warning.
 
+> **Covariates and the specification test.** `estat jtest` does **not** adjust
+> for covariates. Even after a covariate-adjusted fit, it tests
+> **unconditional** parallel trends and no anticipation, not the
+> covariate-conditional parallel trends assumption under which the effects are
+> estimated. If covariates are distributed differently across cohorts, the test
+> can reject although conditional parallel trends hold, and a non-rejection
+> does not validate the conditional assumption. The estimation output and
+> `estat jtest` print a reminder whenever covariates are used.
+
 ## Specification test: estat jtest
 
-`estat jtest` is a serial-correlation robust joint test of parallel trends and
-no anticipation (Section 4.4 of the paper). It fixes a base pre-period
+`estat jtest` is a serial-correlation robust joint test of **unconditional**
+parallel trends and no anticipation (Section 4.4 of the paper). Its placebo
+moments are never covariate-adjusted; see the box under
+[Covariates](#what-is-estimated). It fixes a base pre-period
 $t_0 = g_{\min} - 1$, the last period before any cohort adopts. For each
 treated cohort $g$ and pre-period $t < g$ it forms the placebo moment
 
@@ -149,7 +160,30 @@ treatment, so restricting to the window costs little power. `full` is well
 sized only when the number of units is comfortably large. The test requires a
 never-treated control group. Results are returned in `r(J)`, `r(df)`, `r(p)`,
 `r(base_period)`, `r(n_moments)`, `r(n_dropped)`, `r(window)`, `r(type)`,
-`r(weighting)` and the matrix `r(moments)`.
+`r(scope)` (always `unconditional`), `r(weighting)` and the matrix `r(moments)`.
+
+## Exporting results: esttab and outreg2
+
+`e(b)` and `e(V)` hold the cohort-by-time effects, so `esttab`, `outreg2`,
+`lincom` and `test` work on them directly. The aggregate ATTs are exported with
+`estat aggregate, post`. It replaces `e(b)` and `e(V)` with the two aggregates,
+`att_cw` (treated-observation) and `att_ew` (cohort-equal), and their exact
+joint covariance. It keeps every other result, so `estat jtest` still works.
+
+```stata
+staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)
+estimates store catt               // cohort-by-time effects
+estat aggregate, post
+estimates store att                // aggregate ATTs
+esttab att, se                     // or: outreg2 using results, replace
+esttab catt, se
+```
+
+Without `post`, `estat aggregate` displays the same table and returns it in
+`r(b)` and `r(V)` without changing `e()`. When some cohort-by-time effects are
+not identified, both aggregates are taken over the identified effects only, and
+the output reports the share of weight they cover (`r(share_cw)`,
+`r(share_ew)`).
 
 ## Stored results
 
@@ -164,7 +198,8 @@ staggeredgmm` has the full list.
 | `e(att_ew)`, `e(se_ew)` | cohort-equal ATT and standard error |
 | `e(att_cw_id)`, `e(att_ew_id)` (and `se_`, `share_`) | identified-subset aggregates and the share of weight they cover |
 | `e(w_cw)`, `e(w_ew)` | aggregation weights over all cells |
-| `e(N)`, `e(N_units)`, `e(T_periods)`, `e(n_cohorts)` | sample dimensions |
+| `e(N)` | observations with a non-missing outcome |
+| `e(N_rows)`, `e(N_units)`, `e(T_periods)`, `e(n_cohorts)` | unit-period rows (including missing outcomes), units, periods, treated cohorts |
 | `e(N_beta)`, `e(N_identified)`, `e(N_2x2)`, `e(moment_rank)` | design dimensions |
 | `e(converged)`, `e(solve_ok)`, `e(n_iter)`, `e(max_change)`, `e(termination)` | convergence diagnostics |
 | `e(has_never)`, `e(n_never_zero)`, `e(n_never_late)` | control-group information |
@@ -182,31 +217,37 @@ estat jtest
 estat jtest, window(5)
 estat jtest, full
 
-* Cohort-specific and unrestricted weighting
-staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) weighting(cohort_toeplitz)
-staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) weighting(u)
+* Aggregate ATTs, posted for export
+estat aggregate
+estat aggregate, post
 
-* Baseline covariates, including a factor variable
+* Cohort-specific Toeplitz weighting
+staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) weighting(cohort_toeplitz)
+
+* Baseline covariates, including a factor variable (the J-test stays unconditional)
 staggeredgmm y x1 i.x2, ivar(unit_id) time(year) gvar(cohort)
+estat jtest
 
 * Not-yet-treated controls only
 staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) nonevertreated
 
+* No never-treated group at all: 30 of the 90 effects are identified
+staggeredgmm y if cohort != 0, ivar(unit_id) time(year) gvar(cohort)
+
 * Every cohort-by-time cell, and inference on a combination of effects
+staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)
 matrix list e(catt)
 lincom _b[g10:t12] - _b[g10:t10]
 
-* Bank deregulation and inequality (Beck, Levine and Levkov 2010)
-sysuse sgmm_beck_banks, clear
-staggeredgmm ln_gini if branch_reform > 1976, ivar(state) time(wrkyr) gvar(branch_reform)
+* Always-treated units are rejected with an error naming the cohort
+replace cohort = 1 if cohort == 10
+staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)
 ```
 
-In `sgmm_beck_banks`, thirteen states deregulated in or before 1976, the first
-observed year, and no state is never treated. Without the `if` restriction the
-command exits with an error naming the always-treated cohorts. With it, the 36
-remaining states are identified from not-yet-treated controls alone. Many
-cohorts contain only one or two states, so the iterated weighting is poorly
-determined and the command warns that it did not converge.
+`unrestricted` weighting needs many units per cohort relative to the number of
+periods. With 10 units per cohort and 33 periods, `sgmm_sim_panel` is too small
+for it: the command warns that no weighted step could be completed and reports
+the identity-weighted starting estimate.
 
 ## Data requirements
 
@@ -220,11 +261,17 @@ offending observations, units, periods or cohorts:
 - `gvar()` is constant within unit;
 - no period is absent from the whole panel (individual units may miss individual periods);
 - no unit is treated at or before the first observed period;
+- if never-treated units are coded 0, period 0 does not lie after the first observed period (otherwise 0 would also mean "first treated in period 0"; code never-treated units with a value after the last period instead);
 - at least one cohort adopts strictly inside the observed window.
 
 Units treated at or before the first observed period have no pre-treatment
 period, so none of their effects is identified. Including them silently would
 contaminate the aggregates, so they must be removed before estimation.
+
+Stored results include a weight matrix with one row per group-period. Stata/BE
+limits matrices to 800 rows, Stata/SE to 11,000 and Stata/MP to 65,534. A
+design that exceeds the limit is rejected before estimation, with an error
+reporting the size required.
 
 ## Unbalanced panels, partial identification and convergence
 
@@ -261,13 +308,11 @@ always issued.
 | File | Purpose |
 |---|---|
 | `staggeredgmm.ado` | estimation command (ado and Mata) |
-| `staggeredgmm_estat.ado` | `estat jtest` |
+| `staggeredgmm_estat.ado` | `estat jtest` and `estat aggregate` |
 | `staggeredgmm.sthlp`, `staggeredgmm_postestimation.sthlp` | help files |
 | `staggeredgmm.pkg`, `stata.toc` | `net install` metadata |
 | `sgmm_sim_panel.dta` | simulated panel used in the examples |
-| `sgmm_beck_banks.dta` | Beck, Levine and Levkov (2010) bank-deregulation panel (CC BY 4.0) |
-| `sgmm_beck_banks_LICENSE.txt` | licence and provenance of `sgmm_beck_banks.dta` |
-| `cert/` | certification script, reference values and test data |
+| `test/staggeredgmm_test.do` | test script: exact recovery, invariances, error handling, postestimation |
 
 ## Citation
 
@@ -299,15 +344,9 @@ Please cite the paper and the software:
 }
 ```
 
-The R package is at
-[CRAN](https://CRAN.R-project.org/package=staggeredGMM) and
-[GitHub](https://github.com/RishabhBijani/staggeredGMM).
-
 ## Authors and licence
 
 Parush Arora, Ashoka University, parush.arora@ashoka.edu.in
 Rishabh Bijani, Ashoka University, rishabhbijani@gmail.com
 
-Released under the MIT licence. `sgmm_beck_banks.dta` is derived from the
-replication data of Beck, Levine and Levkov (2010), DataverseNL
-doi:10.34894/B1K9OU, under CC BY 4.0; see `sgmm_beck_banks_LICENSE.txt`.
+Released under the MIT licence.

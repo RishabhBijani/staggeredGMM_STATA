@@ -1,9 +1,11 @@
 # macOS
 .DS_Store
 
-# Parity study: kept local, not published
+# Kept local, not published: parity study and cross-language certification
 parity/
+cert/
 
 # Stata logs
 *.log
 *.smcl
+!test/staggeredgmm_test.log

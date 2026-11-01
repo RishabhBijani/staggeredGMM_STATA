@@ -53,7 +53,7 @@
 {p 4 6 2}
 {it:covariates} are baseline (pre-treatment, time-invariant) covariates and may contain factor variables; see {help fvvarlist}.{p_end}
 {p 4 6 2}
-See {help staggeredgmm_postestimation} for features available after estimation, including {cmd:estat jtest}.{p_end}
+See {help staggeredgmm_postestimation} for features available after estimation, including {cmd:estat jtest} and {cmd:estat aggregate}.{p_end}
 
 
 {marker description}{...}
@@ -80,11 +80,6 @@ treatment carry more weight; this is the aggregation used in the paper and
 coincides with the "simple" aggregation of Callaway and Sant'Anna (2021). The
 {it:cohort-equal} ATT gives every treated cohort the same total weight, spread
 equally over its own post-treatment periods.
-
-{pstd}
-{cmd:staggeredgmm} is the Stata implementation of the R package
-{browse "https://CRAN.R-project.org/package=staggeredGMM":staggeredGMM}
-(version 0.1.0).
 
 
 {marker options}{...}
@@ -154,13 +149,22 @@ offending observations, units, periods or cohorts:
 {p 8 10 2}- {cmd:gvar()} is constant within unit;{p_end}
 {p 8 10 2}- no period is absent from the whole panel (individual units may miss individual periods);{p_end}
 {p 8 10 2}- no unit is treated at or before the first observed period;{p_end}
+{p 8 10 2}- if never-treated units are coded 0, period 0 does not lie after the first observed period (otherwise 0 would also mean "first treated in period 0");{p_end}
 {p 8 10 2}- at least one cohort adopts strictly inside the observed window.{p_end}
 
 {pstd}
 Units treated at or before the first observed period have no pre-treatment
 period, so none of their effects is identified, and including them silently
 would contaminate the aggregate. Restrict the sample before estimating; see the
-{cmd:sgmm_beck_banks} example below.
+examples below. Never-treated units may also be coded with any value after the
+last observed period; such units are pooled with those coded 0.
+
+{pstd}
+Stored results include a weight matrix with one row per group-period and
+matrices with one row per cohort-by-time effect. Stata/BE limits matrices to
+800 rows, Stata/SE to 11,000 and Stata/MP to 65,534 (see {help limits}); a
+design that exceeds the limit is rejected before estimation with an error that
+reports the size required.
 
 
 {marker remarks}{...}
@@ -214,6 +218,25 @@ period is used, with a warning. Where the regression is not identified (too few
 complete-case control units, or collinear covariates), that comparison reverts
 to the unconditional form, with a warning reporting how many did.
 
+{pstd}
+{bf:Covariates and the specification test.} {cmd:estat jtest} does {bf:not}
+adjust for covariates. Its placebo moments are unadjusted group means, so it
+tests {bf:unconditional} parallel trends and no anticipation, even after a
+covariate-adjusted fit. It is therefore not a test of the conditional parallel
+trends assumption under which a covariate-adjusted model is estimated: when
+covariates are distributed differently across cohorts, the test can reject
+although conditional parallel trends hold, and a non-rejection does not
+validate the conditional assumption. Both the estimation output and
+{cmd:estat jtest} print a reminder whenever covariates are used.
+
+{pstd}
+{bf:Exporting results.} {cmd:e(b)} and {cmd:e(V)} hold the cohort-by-time
+effects, so {cmd:esttab}, {cmd:outreg2}, {cmd:lincom} and {cmd:test} work on
+them directly. To export the aggregate ATTs as coefficients with standard
+errors, use {cmd:estat aggregate, post}, which replaces {cmd:e(b)} and
+{cmd:e(V)} with the two aggregates and their covariance and keeps all other
+results; see {help staggeredgmm_postestimation##aggregate:estat aggregate}.
+
 
 {marker examples}{...}
 {title:Examples}
@@ -226,26 +249,39 @@ to the unconditional form, with a warning reporting how many did.
 {phang2}{cmd:. estat jtest}{p_end}
 {phang2}{cmd:. estat jtest, full}{p_end}
 
+{pstd}Aggregate ATTs, and posting them for {cmd:esttab} or {cmd:outreg2}{p_end}
+{phang2}{cmd:. estat aggregate}{p_end}
+{phang2}{cmd:. estimates store catt}{p_end}
+{phang2}{cmd:. estat aggregate, post}{p_end}
+{phang2}{cmd:. estimates store att}{p_end}
+
 {pstd}Cohort-specific Toeplitz weighting{p_end}
 {phang2}{cmd:. staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) weighting(cohort_toeplitz)}{p_end}
 
-{pstd}Adjusting for baseline covariates{p_end}
+{pstd}Adjusting for baseline covariates (the J-test remains unconditional){p_end}
 {phang2}{cmd:. staggeredgmm y x1 i.x2, ivar(unit_id) time(year) gvar(cohort)}{p_end}
+{phang2}{cmd:. estat jtest}{p_end}
+
+{pstd}No never-treated group: not-yet-treated controls only{p_end}
+{phang2}{cmd:. staggeredgmm y if cohort != 0, ivar(unit_id) time(year) gvar(cohort)}{p_end}
+
+{pstd}
+Without never-treated units, the effects of the last cohort, and of the other
+cohorts once every later cohort is treated, have no clean comparison. Only 30
+of the 90 effects are identified; the full aggregates are missing, and the
+identified-subset aggregates are reported with the share of weight they cover.
 
 {pstd}The full table of cohort-by-time effects, including any that are not identified{p_end}
 {phang2}{cmd:. matrix list e(catt)}{p_end}
 
-{pstd}Bank deregulation and inequality: always-treated states must be removed first{p_end}
-{phang2}{cmd:. sysuse sgmm_beck_banks, clear}{p_end}
-{phang2}{cmd:. staggeredgmm ln_gini if branch_reform > 1976, ivar(state) time(wrkyr) gvar(branch_reform)}{p_end}
+{pstd}Always-treated units are rejected{p_end}
+{phang2}{cmd:. replace cohort = 1 if cohort == 10}{p_end}
+{phang2}{cmd:. staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)}{p_end}
 
 {pstd}
-In {cmd:sgmm_beck_banks}, thirteen states deregulated at or before 1976, the first
-observed year, and no state is never treated. Without the {cmd:if} restriction
-the command exits with an error naming the always-treated cohorts. With it, the
-36 remaining states are identified from not-yet-treated controls alone; many
-cohorts contain only one or two states, so the iterated weighting is poorly
-determined there and the command warns that it did not converge.
+Cohort 1 is treated in the first observed period, so it has no pre-treatment
+period and none of its effects is identified. The command exits with an error
+naming the cohort; drop such units, for example with {cmd:if cohort != 1}.
 
 
 {marker results}{...}
@@ -256,7 +292,8 @@ determined there and the command warns that it did not converge.
 
 {synoptset 24 tabbed}{...}
 {p2col 5 24 28 2: Scalars}{p_end}
-{synopt:{cmd:e(N)}}number of observations{p_end}
+{synopt:{cmd:e(N)}}number of observations with a non-missing outcome{p_end}
+{synopt:{cmd:e(N_rows)}}number of unit-period rows in the estimation sample, including rows with a missing outcome{p_end}
 {synopt:{cmd:e(N_units)}}number of units{p_end}
 {synopt:{cmd:e(T_periods)}}number of periods{p_end}
 {synopt:{cmd:e(T_min)}, {cmd:e(T_max)}}first and last period{p_end}
@@ -289,6 +326,7 @@ determined there and the command warns that it did not converge.
 
 {p2col 5 24 28 2: Macros}{p_end}
 {synopt:{cmd:e(cmd)}}{cmd:staggeredgmm}{p_end}
+{synopt:{cmd:e(subcmd)}}{cmd:aggregate} after {cmd:estat aggregate, post}{p_end}
 {synopt:{cmd:e(cmdline)}}command as typed{p_end}
 {synopt:{cmd:e(depvar)}}name of dependent variable{p_end}
 {synopt:{cmd:e(ivar)}, {cmd:e(timevar)}, {cmd:e(gvar)}}unit, time and cohort variables{p_end}
@@ -310,7 +348,7 @@ determined there and the command warns that it did not converge.
 {synopt:{cmd:e(sgmm_W)}, {cmd:e(sgmm_ymeans)}, {cmd:e(sgmm_Ngt)}, {cmd:e(sgmm_groups)}}internal objects used by {cmd:estat jtest}{p_end}
 
 {p2col 5 24 28 2: Functions}{p_end}
-{synopt:{cmd:e(sample)}}marks estimation sample{p_end}
+{synopt:{cmd:e(sample)}}marks estimation sample; rows with a missing outcome are included, because they define the panel{p_end}
 
 
 {marker references}{...}
@@ -320,13 +358,6 @@ determined there and the command warns that it did not converge.
 Arora, P. and R. Bijani. 2026. Estimating treatment effects under staggered
 timing and non-spherical errors. Available at SSRN,
 {browse "https://doi.org/10.2139/ssrn.6558759":doi:10.2139/ssrn.6558759}.
-
-{phang}
-Beck, T., R. Levine and A. Levkov. 2010. Big bad banks? The winners and losers
-from bank deregulation in the United States. {it:Journal of Finance} 65(5):
-1637-1667. Replication data: DataverseNL, doi:10.34894/B1K9OU, CC BY 4.0. In
-{cmd:sgmm_beck_banks} a subset of the deposited columns was selected; no
-values were altered.
 
 {phang}
 Callaway, B. and P. H. C. Sant'Anna. 2021. Difference-in-differences with

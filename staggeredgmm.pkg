@@ -10,10 +10,11 @@ d serial correlation of the errors. Three weighting schemes are provided:
 d a pooled stationary covariance, a cohort-specific stationary covariance and
 d an unrestricted within-cohort covariance. Optional adjustment for baseline
 d covariates by outcome regression, and a serial-correlation robust
-d over-identification test of parallel trends and no anticipation (estat jtest),
-d are also supported. Unbalanced panels are supported.
+d over-identification test of unconditional parallel trends and no
+d anticipation (estat jtest), are also supported. estat aggregate posts the
+d aggregate ATTs for export with esttab or outreg2. Unbalanced panels are
+d supported.
 d
-d Stata implementation of the R package staggeredGMM 0.1.0 (CRAN).
 d Method: Arora and Bijani (2026), doi:10.2139/ssrn.6558759.
 d
 d KW: difference-in-differences
@@ -25,7 +26,7 @@ d KW: parallel trends
 d
 d Requires: Stata version 16
 d
-d Distribution-Date: 20261030
+d Distribution-Date: 20261101
 d Homepage: https://github.com/RishabhBijani/staggeredGMM_STATA
 d License: MIT
 d
@@ -39,5 +40,3 @@ f staggeredgmm_estat.ado
 f staggeredgmm.sthlp
 f staggeredgmm_postestimation.sthlp
 F sgmm_sim_panel.dta
-F sgmm_beck_banks.dta
-F sgmm_beck_banks_LICENSE.txt

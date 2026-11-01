@@ -1,6 +1,5 @@
 *! version 0.1.0  30oct2026  Parush Arora, Rishabh Bijani
 *! Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption
-*! Stata translation of the R package staggeredGMM 0.1.0 (CRAN)
 
 program staggeredgmm, eclass
 	version 16
@@ -156,7 +155,8 @@ program staggeredgmm, eclass
 		"`b'", "`V'", "`catt'", "`wcw'", "`wew'", "`Ng'", "`coh'", "`W'",    ///
 		"`ym'", "`Ngt'", "`grp'", "`sc'")
 
-	local nobs = `sc'[1, colnumb(`sc', "N")]
+	quietly count if `touse' & !missing(`depvar')
+	local nobs = r(N)
 	ereturn post `b' `V', esample(`touse') depname(`depvar') obs(`nobs')
 
 	local scn : colnames `sc'
@@ -206,6 +206,7 @@ program _sgmm_display
 
 	di _n as txt "Staggered-adoption GMM estimator"
 	di as txt "Weighting: " as res "`wl'" _n
+	di as txt "  Observations          " as res %8.0f e(N)
 	di as txt "  Units                 " as res %8.0f e(N_units)
 	di as txt "  Periods               " as res %8.0f e(T_periods)
 	di as txt "  Treated cohorts       " as res %8.0f e(n_cohorts)
@@ -250,6 +251,9 @@ program _sgmm_display
 		if e(cov_n_fallback) > 0 & e(cov_n_fallback) < . {
 			di as txt "  `=e(cov_n_fallback)' comparison(s) fell back to the unconditional form."
 		}
+		di as txt "{p 0 6 2}Note: {cmd:estat jtest} does not adjust for these covariates. It tests " ///
+			"{bf:unconditional} parallel trends, not the covariate-conditional parallel trends " ///
+			"assumed by this fit; see {help staggeredgmm_postestimation##jtest:estat jtest}.{p_end}"
 	}
 end
 
@@ -529,6 +533,15 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 		_sgmm_abort(gname + " (cohort) contains negative value(s): " +
 			_sgmm_preview(_sgmm_numlab(neg), 5) +
 			". Cohorts must be 0 (never treated) or a treated period.", 459)
+	}
+	if (T_min < 0 & T_max >= 0 & any(cohort_of :== 0)) {
+		_sgmm_abort(gname + " (cohort) codes never-treated units as 0, but period 0 lies " +
+			"inside the observed window (" + _sgmm_num(T_min) + " to " + _sgmm_num(T_max) +
+			"), so 0 could also mean first treated in period 0. Recode never-treated units " +
+			"to a value after the last period (for example " + _sgmm_num(T_max + 1) +
+			"), which is read as never treated within the window, or shift " + tname +
+			" and the treated cohort values by the same amount so that every period " +
+			"is positive.", 459)
 	}
 	always = select(ucoh, ((ucoh :> 0) :& (ucoh :<= T_min)))
 	if (rows(always) > 0) {
@@ -1083,6 +1096,10 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 	real scalar    T_min, T_max, TT, G, nb, n2, n_dropped, cov_fb, nid, i, k, r
 	real scalar    rank, converged, solve_ok, n_iter, max_change, n_kept, nzl
 	real scalar    it, kk, c, K, denom, solved, nzl_it, nk_it
+	real scalar    jj, maxdim
+	real colvector bg
+	string rowvector xl
+	string colvector bl
 	string scalar  termination
 
 	P = _sgmm_validate(yname, idname, tname, gname, tokens(xvars_s), touse, never)
@@ -1094,6 +1111,17 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 
 	C  = _sgmm_cells(P.treated, T_max)
 	nb = rows(C)
+
+	// Stored results include a (G*TT) by (G*TT) weight matrix and nb by nb
+	// matrices; check them against the matrix limit of this Stata edition first.
+	maxdim = (c("MP") ? 65534 : (c("SE") ? 11000 : 800))
+	if (max((G * TT, nb)) > maxdim) {
+		_sgmm_abort("This design needs Stata matrices of dimension " +
+			_sgmm_num(max((G * TT, nb))) + " (" + _sgmm_num(G) + " groups x " +
+			_sgmm_num(TT) + " periods for the weight matrix; " + _sgmm_num(nb) +
+			" cohort-by-time effects), but this edition of Stata allows at most " +
+			_sgmm_num(maxdim) + ". Use Stata/SE or Stata/MP, or shorten the panel.", 908)
+	}
 
 	CD = _sgmm_contrasts(C, P.treated, T_min, P.has_never)
 	if (rows(CD) == 0) {
@@ -1156,11 +1184,20 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 	}
 	Delta = tchg - ctrl
 	if (hasmissing(Delta)) {
-		_sgmm_abort(_sgmm_num(sum(Delta :>= .)) + " of " + _sgmm_num(n2) +
-			" covariate-adjusted comparison(s) are missing because a covariate has no " +
-			"observed value among the units of a treated cohort, so that cohort's " +
-			"covariate mean is undefined. The R package returns NA for the affected " +
-			"effects; staggeredgmm stops instead. Drop or complete that covariate.", 459)
+		bg = uniqrows(select(CD[., 1], (Delta :>= .)))
+		xl = tokens(xlab_s)
+		bl = J(0, 1, "")
+		for (i = 1; i <= rows(bg); i++) {
+			k = _sgmm_match(bg[i], P.all_groups)
+			for (jj = 2; jj <= cols(cm); jj++) {
+				if (cm[k, jj] >= .) bl = bl \ (xl[jj - 1] + " in cohort " + _sgmm_num(bg[i]))
+			}
+		}
+		_sgmm_abort("A covariate has no observed value for any unit of a treated cohort, " +
+			"so that cohort's covariate mean is undefined and its covariate-adjusted " +
+			"comparisons (" + _sgmm_num(sum(Delta :>= .)) + " of " + _sgmm_num(n2) +
+			") cannot be formed. Affected: " + _sgmm_preview(bl, 8) + ". Drop the " +
+			"covariate, or supply it for at least one unit of each treated cohort.", 459)
 	}
 
 	Q = J(n2, nb, 0)
@@ -1375,7 +1412,7 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 	st_matrix(grpname, P.all_groups')
 	st_matrixcolstripe(grpname, (J(G, 1, ""), ("g" :+ _sgmm_slab(P.all_groups))))
 
-	scn = ("N", "N_units", "T_periods", "T_min", "T_max", "n_cohorts", "N_beta",
+	scn = ("N_rows", "N_units", "T_periods", "T_min", "T_max", "n_cohorts", "N_beta",
 	       "N_identified", "N_2x2", "n_dropped_2x2", "moment_rank", "n_kept",
 	       "n_zero_lag", "converged", "solve_ok", "n_iter", "max_change", "tol",
 	       "max_iter", "has_never", "n_never_zero", "n_never_late", "cov_n_fallback",
