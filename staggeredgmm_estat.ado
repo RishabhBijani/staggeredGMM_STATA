@@ -1,4 +1,4 @@
-*! version 0.1.0  30oct2026  Rishabh Bijani, Parush Arora
+*! version 0.1.0  03nov2026  Parush Arora, Rishabh Bijani
 *! Postestimation for staggeredgmm: estat jtest, estat aggregate
 
 program staggeredgmm_estat, rclass
@@ -222,6 +222,15 @@ void _sgmmj_abort(string scalar msg, real scalar rc)
 }
 
 
+// Row positions of the nonzero elements of v, always as a column vector
+// (0 x 1 when there are none); see _sgmm_which() in staggeredgmm.ado.
+real colvector _sgmmj_which(real matrix v)
+{
+	if (length(v) == 0) return(J(0, 1, .))
+	return(selectindex((colshape(v, 1) \ 0 \ 0) :!= 0))
+}
+
+
 void _sgmma_run(string scalar bn, string scalar Vn, string scalar shn)
 {
 	real rowvector b
@@ -233,7 +242,7 @@ void _sgmma_run(string scalar bn, string scalar Vn, string scalar shn)
 	C  = st_matrix("e(catt)")
 	wc = st_matrix("e(w_cw)")'
 	we = st_matrix("e(w_ew)")'
-	id = selectindex(C[., 6] :== 1)
+	id = _sgmmj_which(C[., 6] :== 1)
 	if (rows(id) != cols(b)) {
 		_sgmmj_abort("e(b) does not match the identified cells of e(catt).", 498)
 	}
@@ -264,7 +273,7 @@ void _sgmmj_run(string scalar type, real scalar window, string scalar Jn,
 	real colvector lam, keep, proj
 	real vector    L
 	real scalar    T_min, TT, nt_pos, t0, t0_idx, k, g, s, n_mom, n_dropped
-	real scalar    i, lmax, df, stat, pval, G, j
+	real scalar    i, lmax, df, stat, pval, G, j, nfull
 
 	ym      = st_matrix("e(sgmm_ymeans)")
 	Ngt     = st_matrix("e(sgmm_Ngt)")
@@ -306,9 +315,14 @@ void _sgmmj_run(string scalar type, real scalar window, string scalar Jn,
 		mom_t = mom_t \ tt
 	}
 	if (rows(mom_g) == 0) {
-		_sgmmj_abort("No placebo restriction is available" +
-			(type == "local" ? " with window(" + _sgmmj_num(window) +
-			  "). Try a wider window or the full option." : "."), 459)
+		nfull = sum(cohorts :- T_min :- 1)
+		if (type == "local" & nfull > 0) {
+			_sgmmj_abort("No placebo restriction is available with window(" +
+				_sgmmj_num(window) + "). Try a wider window or the full option.", 459)
+		}
+		_sgmmj_abort("No placebo restriction is available: the base period " +
+			_sgmmj_num(t0) + " is the only pre-treatment period of every treated " +
+			"cohort, so there is no other pre-treatment period to test.", 459)
 	}
 
 	g_pos = J(rows(mom_g), 1, .)
@@ -329,7 +343,7 @@ void _sgmmj_run(string scalar type, real scalar window, string scalar Jn,
 	}
 	n_dropped = sum(ok :== 0)
 	if (n_dropped > 0) {
-		keep = selectindex(ok)
+		keep = _sgmmj_which(ok)
 		if (rows(keep) == 0) {
 			_sgmmj_warn(_sgmmj_num(n_dropped) + " placebo moment(s) reference a group-period " +
 				"with no observed unit and have been dropped from the test.")
@@ -365,7 +379,7 @@ void _sgmmj_run(string scalar type, real scalar window, string scalar Jn,
 		_sgmmj_abort("The estimated covariance of the placebo moments is not positive " +
 			"definite; the test statistic cannot be formed.", 459)
 	}
-	keep = selectindex(lam :> 1e-8 * lmax)
+	keep = _sgmmj_which(lam :> 1e-8 * lmax)
 	df   = rows(keep)
 	if (df < n_mom) {
 		_sgmmj_warn("The covariance of the " + _sgmmj_num(n_mom) + " placebo moment(s) " +

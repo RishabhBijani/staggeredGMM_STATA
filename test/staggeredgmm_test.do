@@ -6,7 +6,8 @@
 * example dataset sgmm_sim_panel.dta from the parent directory. Every check
 * is self-contained: exact recovery on noiseless data, the J-test restriction
 * counts of the simulated design, invariances, error handling, stored results
-* and postestimation. Runs with varabbrev off, as required for SSC.
+* and postestimation, including designs with a single treated cohort. Runs
+* with varabbrev off, as required for SSC.
 
 version 16
 clear all
@@ -57,6 +58,19 @@ program sgmm_noiseless
 	quietly replace tau = 3 if cohort == 4 & year == 4
 	quietly gen double y = unit_id / 10 + year^2 / 7 + tau
 	drop tau
+end
+
+* A noiseless panel with one treated cohort g (four units) and three
+* never-treated units over T periods; the effect at event time e is 1 + e.
+program sgmm_onecohort
+	args g T
+	clear
+	quietly set obs `=7 * `T''
+	quietly gen long unit_id = ceil(_n / `T')
+	quietly gen int year = _n - (unit_id - 1) * `T'
+	quietly gen int cohort = cond(unit_id <= 4, `g', 0)
+	quietly gen double y = unit_id / 10 + year^2 / 7 + ///
+		cond(cohort > 0 & year >= cohort, 1 + year - cohort, 0)
 end
 
 di _n as txt "{hline 70}" _n "Estimation" _n "{hline 70}"
@@ -241,6 +255,129 @@ tempname rb2
 matrix `rb2' = r(b)
 local ok = `ok' & reldif(`rb2'[1,1], e(att_cw_id)) < 1e-12 & reldif(r(share_cw), e(share_cw)) < 1e-12
 sgmm_record D aggregate_identified_subset `ok' ""
+
+di _n as txt "{hline 70}" _n "Single treated cohort" _n "{hline 70}"
+
+* Each design: cohort g, periods T, then the expected numbers of effects,
+* clean comparisons and the moment-space rank.
+foreach d in "2 2 1 1 1" "2 3 2 2 2" "3 3 1 2 2" "3 4 2 4 3" {
+	tokenize `d'
+	foreach w in pooled_toeplitz cohort_toeplitz unrestricted {
+		sgmm_onecohort `1' `2'
+		capture staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) weighting(`w')
+		local rc = _rc
+		local ok = (`rc' == 0)
+		if `ok' {
+			local ok = e(N_beta) == `3' & e(N_identified) == `3' & e(N_2x2) == `4' & ///
+				e(moment_rank) == `5' & e(n_cohorts) == 1
+			tempname C
+			matrix `C' = e(catt)
+			forvalues i = 1/`=rowsof(`C')' {
+				if abs(`C'[`i', 4] - (1 + `C'[`i', 3])) > 1e-8 local ok 0
+			}
+		}
+		sgmm_record S g`1'_T`2'_`w' `ok' "rc=`rc'"
+	}
+}
+
+* with a baseline covariate
+sgmm_onecohort 3 4
+quietly gen double x = mod(unit_id, 3)
+capture staggeredgmm y x, ivar(unit_id) time(year) gvar(cohort)
+local ok = (_rc == 0)
+if `ok' {
+	tempname C
+	matrix `C' = e(catt)
+	local ok = abs(`C'[1, 4] - 1) < 1e-8 & abs(`C'[2, 4] - 2) < 1e-8 & e(cov_n_fallback) == 0
+}
+sgmm_record S covariate `ok' ""
+
+* the 2x2 case equals OLS on first differences: the same estimate, and a
+* standard error equal to the OLS one times sqrt((N-2)/N), since the GMM
+* standard error has no small-sample correction. The OLS standard error is the
+* conventional one under the default weighting and the robust one otherwise.
+clear
+set seed 20261103
+quietly set obs 200
+quietly gen long id = _n
+quietly gen int cohort = cond(mod(id, 2) == 0, 2, 0)
+quietly expand 2
+quietly bysort id: gen int t = _n
+quietly gen double y = rnormal() * (1 + (cohort > 0)) + (cohort > 0) * (t >= cohort)
+tempname bm Vm ab
+foreach w in pooled_toeplitz cohort_toeplitz unrestricted {
+	local b_`w' = .
+	local s_`w' = .
+	local ok_`w' = 0
+	capture staggeredgmm y, ivar(id) time(t) gvar(cohort) weighting(`w')
+	local rc_`w' = _rc
+	if `rc_`w'' == 0 {
+		matrix `bm' = e(b)
+		matrix `Vm' = e(V)
+		local b_`w' = `bm'[1, 1]
+		local s_`w' = sqrt(`Vm'[1, 1])
+		local ok_`w' = e(solve_ok) == 1 & e(converged) == 1 & e(N_beta) == 1 & e(N_2x2) == 1
+	}
+}
+local agg_ok = 0
+local j_rc = -1
+capture staggeredgmm y, ivar(id) time(t) gvar(cohort)
+if _rc == 0 {
+	capture estat aggregate
+	if _rc == 0 {
+		matrix `ab' = r(b)
+		local agg_ok = reldif(`ab'[1, 1], `b_pooled_toeplitz') < 1e-12 & ///
+			reldif(`ab'[1, 2], `b_pooled_toeplitz') < 1e-12
+	}
+	capture estat jtest, full
+	local j_rc = _rc
+}
+sort id t
+quietly by id: gen double dy = y[2] - y[1] if _n == 2
+quietly gen byte tr = (cohort == 2)
+quietly regress dy tr
+local nn  = e(N)
+local bo  = _b[tr]
+local so  = _se[tr]
+quietly regress dy tr, vce(robust)
+local sr  = _se[tr]
+local fac = sqrt((`nn' - 2) / `nn')
+foreach w in pooled_toeplitz cohort_toeplitz unrestricted {
+	local sref = cond("`w'" == "pooled_toeplitz", `so', `sr') * `fac'
+	local ok = `ok_`w'' & reldif(`b_`w'', `bo') < 1e-9 & reldif(`s_`w'', `sref') < 1e-9
+	sgmm_record S twoxtwo_`w' `ok' "rc=`rc_`w'' b=`b_`w'' (ols `bo') se=`s_`w'' (ref `sref')"
+}
+sgmm_record S twoxtwo_aggregate `agg_ok' ""
+sgmm_record S twoxtwo_jtest_none `=`j_rc' == 459' "rc=`j_rc'"
+
+* four periods, first treated in period 3 (one placebo restriction)
+clear
+quietly set obs 200
+quietly gen long id = _n
+quietly gen int cohort = cond(mod(id, 2) == 0, 3, 0)
+quietly expand 4
+quietly bysort id: gen int t = _n
+quietly gen double y = rnormal() + (cohort > 0) * (t >= cohort)
+capture staggeredgmm y, ivar(id) time(t) gvar(cohort)
+local ok = (_rc == 0)
+if `ok' local ok = e(N_beta) == 2 & e(N_2x2) == 4 & e(moment_rank) == 3
+sgmm_record S g3_T4_noisy `ok' ""
+capture estat jtest, full
+local ok = (_rc == 0)
+if `ok' local ok = r(n_moments) == 1 & r(df) == 1 & r(base_period) == 2
+sgmm_record S jtest_one_moment `ok' ""
+
+* no usable comparison: the command stops with an error, not a crash
+sgmm_onecohort 3 4
+preserve
+quietly drop if cohort == 0
+sgmm_expect_error single_no_control 459 staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)
+restore
+sgmm_expect_error single_nonever 459 staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) nonevertreated
+preserve
+quietly replace cohort = 0
+sgmm_expect_error no_treated_cohort 459 staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)
+restore
 
 di _n as txt "{hline 70}" _n "Error handling" _n "{hline 70}"
 

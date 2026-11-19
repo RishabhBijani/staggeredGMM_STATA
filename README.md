@@ -111,6 +111,18 @@ cohort 10 in period 12. `lincom`, `test` and `nlcom` work as usual.
 - The *cohort-equal* ATT (`e(att_ew)`) gives every treated cohort the same total
   weight, spread equally over its own post-treatment periods.
 
+**Standard errors.** The reported standard errors are asymptotic: they apply no
+degrees-of-freedom or other small-sample correction. A single treated cohort is
+supported when never-treated units are present. With two periods, one treated
+cohort, never-treated controls, a balanced panel and no covariates, the design
+is the canonical 2×2 difference-in-differences: the estimate equals the OLS
+coefficient from regressing the change in the outcome on a treatment indicator,
+and the standard error equals the OLS standard error times $\sqrt{(N-2)/N}$,
+where $N$ is the number of units, so it is slightly smaller in small samples.
+The OLS standard error in question is the conventional one under the default
+weighting, and the heteroskedasticity-robust one (`vce(robust)`) under
+`cohort_toeplitz` or `unrestricted`.
+
 **Covariates.** When covariates are supplied, the outcome-regression adjustment
 of Section 4.5 of the paper is applied, so parallel trends need only hold
 conditional on the covariates. For each clean comparison, the change in the
@@ -147,7 +159,10 @@ $J = p'\,\Omega_p^{-1}\,p$ uses the covariance $\Omega_p$ of the placebo
 moments implied by the fitted serial-correlation model. It is asymptotically
 $\chi^2$ with as many degrees of freedom as placebo moments. No degrees of
 freedom are subtracted for estimated parameters, because the placebo moments do
-not involve the treatment effects.
+not involve the treatment effects. When the only treated cohort adopts in the
+second observed period (for example, in a two-period panel), the base period is
+its only pre-treatment period, so no placebo restriction exists and the test
+exits with an error.
 
 | Option | Description |
 |---|---|

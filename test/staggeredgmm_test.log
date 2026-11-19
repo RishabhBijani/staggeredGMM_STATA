@@ -1,8 +1,8 @@
---------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------------------------
       name:  <unnamed>
        log:  /Users/rishabhbijani/Desktop/staggeredGMM_local/staggeredgmm_stata/test/staggeredgmm_test.log
   log type:  text
- opened on:   1 Nov 2026, 15:47:42
+ opened on:  19 Nov 2026, 16:01:47
 
 . do staggeredgmm_test.do
 
@@ -14,7 +14,8 @@
 . * example dataset sgmm_sim_panel.dta from the parent directory. Every check
 . * is self-contained: exact recovery on noiseless data, the J-test restriction
 . * counts of the simulated design, invariances, error handling, stored results
-. * and postestimation. Runs with varabbrev off, as required for SSC.
+. * and postestimation, including designs with a single treated cohort. Runs
+. * with varabbrev off, as required for SSC.
 . 
 . version 16
 
@@ -87,6 +88,20 @@
  10.         quietly gen double y = unit_id / 10 + year^2 / 7 + tau
  11.         drop tau
  12. end
+
+. 
+. * A noiseless panel with one treated cohort g (four units) and three
+. * never-treated units over T periods; the effect at event time e is 1 + e.
+. program sgmm_onecohort
+  1.         args g T
+  2.         clear
+  3.         quietly set obs `=7 * `T''
+  4.         quietly gen long unit_id = ceil(_n / `T')
+  5.         quietly gen int year = _n - (unit_id - 1) * `T'
+  6.         quietly gen int cohort = cond(unit_id <= 4, `g', 0)
+  7.         quietly gen double y = unit_id / 10 + year^2 / 7 + ///
+>                 cond(cohort > 0 & year >= cohort, 1 + year - cohort, 0)
+  8. end
 
 . 
 . di _n as txt "{hline 70}" _n "Estimation" _n "{hline 70}"
@@ -435,6 +450,193 @@ estat aggregate
 . sgmm_record D aggregate_identified_subset `ok' ""
 
 . 
+. di _n as txt "{hline 70}" _n "Single treated cohort" _n "{hline 70}"
+
+----------------------------------------------------------------------
+Single treated cohort
+----------------------------------------------------------------------
+
+. 
+. * Each design: cohort g, periods T, then the expected numbers of effects,
+. * clean comparisons and the moment-space rank.
+. foreach d in "2 2 1 1 1" "2 3 2 2 2" "3 3 1 2 2" "3 4 2 4 3" {
+  2.         tokenize `d'
+  3.         foreach w in pooled_toeplitz cohort_toeplitz unrestricted {
+  4.                 sgmm_onecohort `1' `2'
+  5.                 capture staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) weighting(`w')
+  6.                 local rc = _rc
+  7.                 local ok = (`rc' == 0)
+  8.                 if `ok' {
+  9.                         local ok = e(N_beta) == `3' & e(N_identified) == `3' & e(N_2x2) == `4' & ///
+>                                 e(moment_rank) == `5' & e(n_cohorts) == 1
+ 10.                         tempname C
+ 11.                         matrix `C' = e(catt)
+ 12.                         forvalues i = 1/`=rowsof(`C')' {
+ 13.                                 if abs(`C'[`i', 4] - (1 + `C'[`i', 3])) > 1e-8 local ok 0
+ 14.                         }
+ 15.                 }
+ 16.                 sgmm_record S g`1'_T`2'_`w' `ok' "rc=`rc'"
+ 17.         }
+ 18. }
+
+. 
+. * with a baseline covariate
+. sgmm_onecohort 3 4
+
+. quietly gen double x = mod(unit_id, 3)
+
+. capture staggeredgmm y x, ivar(unit_id) time(year) gvar(cohort)
+
+. local ok = (_rc == 0)
+
+. if `ok' {
+.         tempname C
+.         matrix `C' = e(catt)
+.         local ok = abs(`C'[1, 4] - 1) < 1e-8 & abs(`C'[2, 4] - 2) < 1e-8 & e(cov_n_fallback) == 0
+. }
+
+. sgmm_record S covariate `ok' ""
+
+. 
+. * the 2x2 case equals OLS on first differences: the same estimate, and a
+. * standard error equal to the OLS one times sqrt((N-2)/N), since the GMM
+. * standard error has no small-sample correction. The OLS standard error is the
+. * conventional one under the default weighting and the robust one otherwise.
+. clear
+
+. set seed 20261103
+
+. quietly set obs 200
+
+. quietly gen long id = _n
+
+. quietly gen int cohort = cond(mod(id, 2) == 0, 2, 0)
+
+. quietly expand 2
+
+. quietly bysort id: gen int t = _n
+
+. quietly gen double y = rnormal() * (1 + (cohort > 0)) + (cohort > 0) * (t >= cohort)
+
+. tempname bm Vm ab
+
+. foreach w in pooled_toeplitz cohort_toeplitz unrestricted {
+  2.         local b_`w' = .
+  3.         local s_`w' = .
+  4.         local ok_`w' = 0
+  5.         capture staggeredgmm y, ivar(id) time(t) gvar(cohort) weighting(`w')
+  6.         local rc_`w' = _rc
+  7.         if `rc_`w'' == 0 {
+  8.                 matrix `bm' = e(b)
+  9.                 matrix `Vm' = e(V)
+ 10.                 local b_`w' = `bm'[1, 1]
+ 11.                 local s_`w' = sqrt(`Vm'[1, 1])
+ 12.                 local ok_`w' = e(solve_ok) == 1 & e(converged) == 1 & e(N_beta) == 1 & e(N_2x2) == 1
+ 13.         }
+ 14. }
+
+. local agg_ok = 0
+
+. local j_rc = -1
+
+. capture staggeredgmm y, ivar(id) time(t) gvar(cohort)
+
+. if _rc == 0 {
+.         capture estat aggregate
+.         if _rc == 0 {
+.                 matrix `ab' = r(b)
+.                 local agg_ok = reldif(`ab'[1, 1], `b_pooled_toeplitz') < 1e-12 & ///
+>                         reldif(`ab'[1, 2], `b_pooled_toeplitz') < 1e-12
+.         }
+.         capture estat jtest, full
+.         local j_rc = _rc
+. }
+
+. sort id t
+
+. quietly by id: gen double dy = y[2] - y[1] if _n == 2
+
+. quietly gen byte tr = (cohort == 2)
+
+. quietly regress dy tr
+
+. local nn  = e(N)
+
+. local bo  = _b[tr]
+
+. local so  = _se[tr]
+
+. quietly regress dy tr, vce(robust)
+
+. local sr  = _se[tr]
+
+. local fac = sqrt((`nn' - 2) / `nn')
+
+. foreach w in pooled_toeplitz cohort_toeplitz unrestricted {
+  2.         local sref = cond("`w'" == "pooled_toeplitz", `so', `sr') * `fac'
+  3.         local ok = `ok_`w'' & reldif(`b_`w'', `bo') < 1e-9 & reldif(`s_`w'', `sref') < 1e-9
+  4.         sgmm_record S twoxtwo_`w' `ok' "rc=`rc_`w'' b=`b_`w'' (ols `bo') se=`s_`w'' (ref `sref')"
+  5. }
+
+. sgmm_record S twoxtwo_aggregate `agg_ok' ""
+
+. sgmm_record S twoxtwo_jtest_none `=`j_rc' == 459' "rc=`j_rc'"
+
+. 
+. * four periods, first treated in period 3 (one placebo restriction)
+. clear
+
+. quietly set obs 200
+
+. quietly gen long id = _n
+
+. quietly gen int cohort = cond(mod(id, 2) == 0, 3, 0)
+
+. quietly expand 4
+
+. quietly bysort id: gen int t = _n
+
+. quietly gen double y = rnormal() + (cohort > 0) * (t >= cohort)
+
+. capture staggeredgmm y, ivar(id) time(t) gvar(cohort)
+
+. local ok = (_rc == 0)
+
+. if `ok' local ok = e(N_beta) == 2 & e(N_2x2) == 4 & e(moment_rank) == 3
+
+. sgmm_record S g3_T4_noisy `ok' ""
+
+. capture estat jtest, full
+
+. local ok = (_rc == 0)
+
+. if `ok' local ok = r(n_moments) == 1 & r(df) == 1 & r(base_period) == 2
+
+. sgmm_record S jtest_one_moment `ok' ""
+
+. 
+. * no usable comparison: the command stops with an error, not a crash
+. sgmm_onecohort 3 4
+
+. preserve
+
+. quietly drop if cohort == 0
+
+. sgmm_expect_error single_no_control 459 staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)
+
+. restore
+
+. sgmm_expect_error single_nonever 459 staggeredgmm y, ivar(unit_id) time(year) gvar(cohort) nonevertreated
+
+. preserve
+
+. quietly replace cohort = 0
+
+. sgmm_expect_error no_treated_cohort 459 staggeredgmm y, ivar(unit_id) time(year) gvar(cohort)
+
+. restore
+
+. 
 . di _n as txt "{hline 70}" _n "Error handling" _n "{hline 70}"
 
 ----------------------------------------------------------------------
@@ -610,7 +812,7 @@ Error handling
 ----------------------------------------------------------------------
 
 . di as txt "Checks passed: " as res $sgmm_pass as txt "   failed: " as res $sgmm_fail
-Checks passed: 56   failed: 0
+Checks passed: 79   failed: 0
 
 . if $sgmm_fail > 0 {
 .         di as err "FAILED:$sgmm_failed"
@@ -627,5 +829,5 @@ end of do-file
       name:  <unnamed>
        log:  /Users/rishabhbijani/Desktop/staggeredGMM_local/staggeredgmm_stata/test/staggeredgmm_test.log
   log type:  text
- closed on:   1 Nov 2026, 15:47:50
+ closed on:  19 Nov 2026, 16:01:56
 ------------------------------------------------------------------------------------------------------------------------

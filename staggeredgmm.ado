@@ -1,4 +1,4 @@
-*! version 0.1.0  30oct2026  Parush Arora, Rishabh Bijani
+*! version 0.1.0  03nov2026  Parush Arora, Rishabh Bijani
 *! Generalised Method of Moments Estimation of Treatment Effects under Staggered Adoption
 
 program staggeredgmm, eclass
@@ -354,11 +354,34 @@ void _sgmm_warn(string scalar msg)
 }
 
 
+// Row positions of the nonzero elements of v, always as a column vector
+// (0 x 1 when there are none). selectindex() and select() cannot tell
+// whether a 1 x 1 argument is a row or a column and return a row-shaped
+// (1 x 0) result when it is zero, which breaks stacking and row counts;
+// the two appended zeros make the argument an unambiguous column.
+real colvector _sgmm_which(real matrix v)
+{
+	if (length(v) == 0) return(J(0, 1, .))
+	return(selectindex((colshape(v, 1) \ 0 \ 0) :!= 0))
+}
+
+
+// The rows of X at the nonzero elements of v (0 rows when there are none).
+transmorphic matrix _sgmm_rows(transmorphic matrix X, real matrix v)
+{
+	real colvector ix
+
+	ix = _sgmm_which(v)
+	if (rows(ix) == 0) return(J(0, cols(X), missingof(X)))
+	return(X[ix, .])
+}
+
+
 real scalar _sgmm_integerish(real colvector x)
 {
 	real colvector f
 
-	f = select(x, x :< .)
+	f = _sgmm_rows(x, x :< .)
 	if (rows(f) == 0) return(0)
 	return(all(f :== trunc(f)))
 }
@@ -370,7 +393,7 @@ void _sgmm_check_missing(real colvector miss, real colvector obsno,
 	real colvector w
 
 	if (any(miss)) {
-		w = select(obsno, miss)
+		w = _sgmm_rows(obsno, miss)
 		_sgmm_abort(nm + " (" + role + ") contains " + _sgmm_num(rows(w)) +
 			" missing value(s); observations: " +
 			_sgmm_preview(_sgmm_numlab(w), 5) + ".", 459)
@@ -392,7 +415,7 @@ real colvector _sgmm_group(transmorphic colvector x, transmorphic colvector uniq
 	}
 	grp = J(n, 1, .)
 	grp[p] = runningsum(newg)
-	uniq = x[select(p, newg)]
+	uniq = x[_sgmm_rows(p, newg)]
 	return(grp)
 }
 
@@ -430,7 +453,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 	real scalar    n, isstr, i, j, u, N, T_min, T_max, TT, n0, nl, nn
 	real scalar    has_never, G, gi, nc, v, n_always
 
-	obsno = selectindex(st_data(., touse) :!= 0)
+	obsno = _sgmm_which(st_data(., touse) :!= 0)
 	n = rows(obsno)
 	if (n == 0) _sgmm_abort("no observations", 2000)
 
@@ -479,7 +502,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 		}
 	}
 	if (any(dup)) {
-		w = select(obsno, dup)
+		w = _sgmm_rows(obsno, dup)
 		_sgmm_abort("Each unit-period combination must appear exactly once; found " +
 			_sgmm_num(rows(w)) + " duplicate observation(s). Offending observations: " +
 			_sgmm_preview(_sgmm_numlab(w), 5) + ".", 459)
@@ -508,7 +531,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 		else if (cohort_of[u] != gs[i]) bad[u] = 1
 	}
 	if (any(bad)) {
-		ix = selectindex(bad)
+		ix = _sgmm_which(bad)
 		_sgmm_abort(gname + " (cohort) must be constant within unit; " +
 			_sgmm_num(rows(ix)) + " unit(s) have more than one cohort value. Affected: " +
 			_sgmm_preview(ulab[ix], 5) + ".", 459)
@@ -518,7 +541,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 	if (rows(present) != TT) {
 		isp = J(TT, 1, 0)
 		isp[present :- T_min :+ 1] = J(rows(present), 1, 1)
-		gaps = select((T_min::T_max), (isp :== 0))
+		gaps = _sgmm_rows((T_min::T_max), (isp :== 0))
 		_sgmm_abort("The set of periods present in the data must be consecutive: " +
 			"no period may be absent for every unit. Period(s) absent from the whole panel: " +
 			_sgmm_preview(_sgmm_numlab(gaps), 5) + ". The stationary weighting indexes " +
@@ -528,7 +551,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 	}
 
 	ucoh = uniqrows(cohort_of)
-	neg  = select(ucoh, (ucoh :< 0))
+	neg  = _sgmm_rows(ucoh, (ucoh :< 0))
 	if (rows(neg) > 0) {
 		_sgmm_abort(gname + " (cohort) contains negative value(s): " +
 			_sgmm_preview(_sgmm_numlab(neg), 5) +
@@ -543,7 +566,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 			" and the treated cohort values by the same amount so that every period " +
 			"is positive.", 459)
 	}
-	always = select(ucoh, ((ucoh :> 0) :& (ucoh :<= T_min)))
+	always = _sgmm_rows(ucoh, ((ucoh :> 0) :& (ucoh :<= T_min)))
 	if (rows(always) > 0) {
 		n_always = sum((cohort_of :> 0) :& (cohort_of :<= T_min))
 		_sgmm_abort(_sgmm_num(n_always) + " unit(s) in cohort(s) " +
@@ -553,7 +576,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 			"cohort-by-time effects is identified, and including them would " +
 			"silently contaminate the aggregate.", 459)
 	}
-	treated = select(ucoh, ((ucoh :> T_min) :& (ucoh :<= T_max)))
+	treated = _sgmm_rows(ucoh, ((ucoh :> T_min) :& (ucoh :<= T_max)))
 	if (rows(treated) == 0) {
 		_sgmm_abort("No treated cohort is identified: " + gname +
 			" contains no value strictly inside the observed period range (" +
@@ -598,7 +621,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 
 	N_gt = J(G, TT, 0)
 	for (gi = 1; gi <= G; gi++) {
-		ix = selectindex((grp_of :== all_groups[gi]) :& in_design)
+		ix = _sgmm_which((grp_of :== all_groups[gi]) :& in_design)
 		N_gt[gi, .] = colsum(obs[ix, .])
 	}
 
@@ -624,7 +647,7 @@ struct _sgmm_panel scalar _sgmm_validate(string scalar yname, string scalar idna
 			}
 		}
 		if (any(badu)) {
-			ix = selectindex(badu)
+			ix = _sgmm_which(badu)
 			_sgmm_warn(_sgmm_num(rows(ix)) + " unit(s) have a covariate value that is " +
 				"not constant over time. Covariates are documented as baseline " +
 				"(pre-treatment, time-invariant); each affected unit's value at its " +
@@ -696,7 +719,7 @@ real matrix _sgmm_contrasts(real matrix C, real colvector treated,
 	for (i = 1; i <= nb; i++) {
 		g  = C[i, 1]
 		tt = C[i, 2]
-		ctrl = select(treated, (treated :> tt))
+		ctrl = _sgmm_rows(treated, (treated :> tt))
 		if (has_never) ctrl = (0 \ ctrl)
 		for (a = 1; a <= rows(ctrl); a++) {
 			for (s = T_min; s <= g - 1; s++) {
@@ -722,7 +745,7 @@ real matrix _sgmm_gmeans(real matrix M, real colvector grp_of,
 
 	out = J(rows(groups), cols(M), .)
 	for (gi = 1; gi <= rows(groups); gi++) {
-		ix = selectindex((grp_of :== groups[gi]) :& in_design)
+		ix = _sgmm_which((grp_of :== groups[gi]) :& in_design)
 		if (rows(ix) > 0) {
 			Mg = M[ix, .]
 			out[gi, .] = colsum(Mg) :/ colsum(Mg :< .)
@@ -819,15 +842,15 @@ real colvector _sgmm_delta_cov(real matrix CD, struct _sgmm_panel scalar P,
 		grp = o[|i \ j|]
 		r1  = grp[1]
 
-		units = selectindex((P.grp_of :== CD[r1, 3]) :& P.in_design)
+		units = _sgmm_which((P.grp_of :== CD[r1, 3]) :& P.in_design)
 		dY    = P.Y[units, tp[r1]] - P.Y[units, tr[r1]]
 		Xc    = P.X_unit[units, .]
 		keep  = ((rowmissing(Xc) :== 0) :& (dY :< .))
 
 		ok = 0
 		if (sum(keep) > ncov) {
-			Xc = select(Xc, keep)
-			dY = select(dY, keep)
+			Xc = _sgmm_rows(Xc, keep)
+			dY = _sgmm_rows(dY, keep)
 			if (_sgmm_qr_rank(Xc, 1e-7) == ncov) {
 				gam = qrsolve(Xc, dY)
 				if (!hasmissing(gam)) ok = 1
@@ -858,7 +881,7 @@ real matrix _sgmm_fe_resid(real colvector yadj, real colvector unit_row,
 	real scalar    n, i, p, a, b
 
 	R  = J(N, TT, .)
-	ok = selectindex(yadj :< .)
+	ok = _sgmm_which(yadj :< .)
 	if (rows(ok) == 0) return(R)
 	u  = unit_row[ok]
 	tt = time_idx[ok]
@@ -867,7 +890,7 @@ real matrix _sgmm_fe_resid(real colvector yadj, real colvector unit_row,
 
 	D = J(n, TT, 0)
 	for (i = 1; i <= n; i++) D[i, tt[i]] = 1
-	keepc = selectindex(colsum(D) :> 0)
+	keepc = _sgmm_which(colsum(D) :> 0)'
 
 	info = panelsetup(u, 1)
 	for (p = 1; p <= rows(info); p++) {
@@ -961,11 +984,11 @@ real matrix _sgmm_weight(real matrix R, real matrix obs, real colvector grp_of,
 	nzl = 0
 	np  = J(0, 1, .)
 	if (weighting == "pooled_toeplitz") {
-		sp  = _sgmm_autocov(R[selectindex(in_design), .], np)
+		sp  = _sgmm_autocov(_sgmm_rows(R, in_design), np)
 		nzl = sum(np :== 0)
 	}
 	for (gi = 1; gi <= G; gi++) {
-		ix = selectindex((grp_of :== groups[gi]) :& in_design)
+		ix = _sgmm_which((grp_of :== groups[gi]) :& in_design)
 		if (rows(ix) == 0) continue
 		if (weighting == "pooled_toeplitz") {
 			S = _sgmm_toeplitz(sp)
@@ -1009,7 +1032,7 @@ real scalar _sgmm_reduced_solve(real colvector d, real matrix v, real matrix uQ,
 	lam  = colshape(L, 1)
 	lmax = max(lam)
 	if (lmax >= . | lmax <= 0) return(0)
-	keep = selectindex(lam :> tol_rel * lmax)
+	keep = _sgmm_which(lam :> tol_rel * lmax)
 	if (rows(keep) == 0) return(0)
 	Vk   = X[., keep]
 	dk   = 1 :/ lam[keep]
@@ -1043,7 +1066,7 @@ real matrix _sgmm_ginv(real matrix A)
 
 	svd(A, U, s0, Vt)
 	s   = colshape(s0, 1)
-	pos = selectindex(s :> max((sqrt(epsilon(1)) * max(s), 0)))
+	pos = _sgmm_which(s :> max((sqrt(epsilon(1)) * max(s), 0)))
 	if (rows(pos) == 0) return(J(cols(A), rows(A), 0))
 	return(Vt[pos, .]' * diag(1 :/ s[pos]) * U[., pos]')
 }
@@ -1145,7 +1168,7 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 	}
 	n_dropped = sum(ok :== 0)
 	if (n_dropped > 0) {
-		keep  = selectindex(ok)
+		keep  = _sgmm_which(ok)
 		if (rows(keep) == 0) {
 			_sgmm_warn(_sgmm_num(n_dropped) + " of " + _sgmm_num(n_dropped) +
 				" clean comparison(s) reference a group-period with no observed unit and " +
@@ -1184,7 +1207,7 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 	}
 	Delta = tchg - ctrl
 	if (hasmissing(Delta)) {
-		bg = uniqrows(select(CD[., 1], (Delta :>= .)))
+		bg = uniqrows(_sgmm_rows(CD[., 1], (Delta :>= .)))
 		xl = tokens(xlab_s)
 		bl = J(0, 1, "")
 		for (i = 1; i <= rows(bg); i++) {
@@ -1203,7 +1226,7 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 	Q = J(n2, nb, 0)
 	for (i = 1; i <= n2; i++) Q[i, CD[i, 5]] = 1
 	ncomp  = colsum(Q)'
-	id_idx = selectindex(ncomp :> 0)
+	id_idx = _sgmm_which(ncomp :> 0)
 	if (rows(id_idx) == 0) {
 		_sgmm_abort("No cohort-by-time effect is anchored by a clean comparison; " +
 			"nothing is identified.", 459)
@@ -1212,7 +1235,7 @@ void _sgmm_main(string scalar yname, string scalar idname, string scalar tname,
 	ident = (ncomp :> 0)
 
 	if (nid < nb) {
-		ix = selectindex(ident :== 0)
+		ix = _sgmm_which(ident :== 0)
 		cstripe = J(rows(ix), 1, "")
 		for (i = 1; i <= rows(ix); i++) {
 			cstripe[i] = "(g=" + _sgmm_num(C[ix[i], 1]) + ", t=" + _sgmm_num(C[ix[i], 2]) + ")"

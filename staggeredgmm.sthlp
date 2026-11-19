@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.0  30oct2026}{...}
+{* *! version 0.1.0  03nov2026}{...}
 {vieweralsosee "staggeredgmm postestimation" "help staggeredgmm_postestimation"}{...}
 {viewerjumpto "Syntax" "staggeredgmm##syntax"}{...}
 {viewerjumpto "Description" "staggeredgmm##description"}{...}
@@ -228,6 +228,19 @@ covariates are distributed differently across cohorts, the test can reject
 although conditional parallel trends hold, and a non-rejection does not
 validate the conditional assumption. Both the estimation output and
 {cmd:estat jtest} print a reminder whenever covariates are used.
+
+{pstd}
+{bf:Standard errors.} The reported standard errors are asymptotic: they apply
+no degrees-of-freedom or other small-sample correction. A single treated cohort
+is supported when never-treated units are present. With two periods, one
+treated cohort, never-treated controls, a balanced panel and no covariates, the
+design is the canonical 2x2 difference-in-differences: the estimate equals the
+OLS coefficient from regressing the change in the outcome on a treatment
+indicator, and the standard error equals the OLS standard error times
+sqrt((N-2)/N), where N is the number of units, so it is slightly smaller in
+small samples. The OLS standard error in question is the conventional one under
+the default weighting, and the heteroskedasticity-robust one
+({cmd:vce(robust)}) under {cmd:cohort_toeplitz} or {cmd:unrestricted}.
 
 {pstd}
 {bf:Exporting results.} {cmd:e(b)} and {cmd:e(V)} hold the cohort-by-time

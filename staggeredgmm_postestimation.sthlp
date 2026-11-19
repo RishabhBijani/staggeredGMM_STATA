@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.0  30oct2026}{...}
+{* *! version 0.1.0  03nov2026}{...}
 {vieweralsosee "staggeredgmm" "help staggeredgmm"}{...}
 {viewerjumpto "Postestimation commands" "staggeredgmm_postestimation##description"}{...}
 {viewerjumpto "estat jtest" "staggeredgmm_postestimation##jtest"}{...}
@@ -78,7 +78,10 @@ warning.
 
 {pstd}
 The base period is t0 = g_min - 1, the last period before any cohort adopts, so
-that every moment has an untreated reference.
+that every moment has an untreated reference. When the only treated cohort
+adopts in the second observed period (for example, in a two-period panel), the
+base period is its only pre-treatment period, so no placebo restriction exists
+and {cmd:estat jtest} exits with an error.
 
 {pstd}
 A large number of restrictions degrades the chi-squared approximation in small
